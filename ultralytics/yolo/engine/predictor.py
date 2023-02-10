@@ -90,6 +90,9 @@ class BasePredictor:
         self.vid_path, self.vid_writer = None, None
         self.annotator = None
         self.data_path = None
+        self.txt_file = self.args.mot_name
+        self.save_mot = self.args.save_mot
+        self.counter = 0
         self.source_type = None
         self.callbacks = defaultdict(list, callbacks.default_callbacks)  # add callbacks
         callbacks.add_integration_callbacks(self)
@@ -135,19 +138,28 @@ class BasePredictor:
         if self.args.verbose:
             LOGGER.info("")
 
+        save_mot_path = Path(self.save_dir.parents[0] / self.args.model_name / "det_output")
+        save_img_path = Path(self.save_dir.parents[0] / self.args.model_name / "img_output" / self.txt_file)
+
         # setup model
         if not self.model:
             self.setup_model(model)
         # setup source every time predict is called
         self.setup_source(source if source is not None else self.args.source)
 
-        # check if save_dir/ label file exists
-        if self.args.save or self.args.save_txt:
-            (self.save_dir / 'labels' if self.args.save_txt else self.save_dir).mkdir(parents=True, exist_ok=True)
         # warmup model
         if not self.done_warmup:
             self.model.warmup(imgsz=(1 if self.model.pt or self.model.triton else self.bs, 3, *self.imgsz))
             self.done_warmup = True
+
+        # create directory for writing mot results to
+        if self.args.save_mot:
+            (save_mot_path).mkdir(parents=True, exist_ok=True)
+
+        # create directory for writing mot annotated images to
+        if self.args.save:
+            (save_img_path).mkdir(parents=True, exist_ok=True)
+
 
         self.seen, self.windows, self.dt, self.batch = 0, [], (ops.Profile(), ops.Profile(), ops.Profile()), None
         for batch in self.dataset:
@@ -167,18 +179,20 @@ class BasePredictor:
             # postprocess
             with self.dt[2]:
                 self.results = self.postprocess(preds, im, im0s, self.classes)
+
             for i in range(len(im)):
                 p, im0 = (path[i], im0s[i]) if self.source_type.webcam or self.source_type.from_img else (path, im0s)
                 p = Path(p)
+                self.counter += 1
 
-                if self.args.verbose or self.args.save or self.args.save_txt or self.args.show:
-                    s += self.write_results(i, self.results, (p, im, im0))
+                if self.args.verbose or self.args.save or self.args.save_txt or self.args.show or self.args.save_mot:
+                    s += self.write_results(i, self.results, (p, im, im0), Path(save_mot_path / self.txt_file), self.counter)
 
                 if self.args.show:
                     self.show(p)
 
                 if self.args.save:
-                    self.save_preds(vid_cap, i, str(self.save_dir / p.name))
+                    self.save_preds(vid_cap, i, str(save_img_path / p.name))
 
             self.run_callbacks("on_predict_batch_end")
             yield from self.results
