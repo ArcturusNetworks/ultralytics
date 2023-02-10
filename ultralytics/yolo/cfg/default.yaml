@@ -53,6 +53,9 @@ show: False  # show results if possible
 save_txt: False  # save results as .txt file
 save_conf: False  # save results with confidence scores
 save_crop: False  # save cropped images with results
+save_mot: False # save results in MOT format
+mot_name: "" # name of MOT file
+model_name: "" # filename writing mot results
 hide_labels: False  # hide labels
 hide_conf: False  # hide confidence scores
 vid_stride: 1  # video frame-rate stride

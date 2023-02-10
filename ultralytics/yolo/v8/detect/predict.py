@@ -35,9 +35,10 @@ class DetectionPredictor(BasePredictor):
             results.append(Results(boxes=pred, orig_shape=shape[:2]))
         return results
 
-    def write_results(self, idx, results, batch):
+    def write_results(self, idx, results, batch, txt_path, img_id):
         p, im, im0 = batch
         log_string = ""
+        save_format = '{frame},{id},{x1},{y1},{w},{h},{conf:.2f},{cls},-1,-1\n'
         if len(im.shape) == 3:
             im = im[None]  # expand for batch dim
         self.seen += 1
@@ -48,7 +49,7 @@ class DetectionPredictor(BasePredictor):
         else:
             frame = getattr(self.dataset, 'frame', 0)
         self.data_path = p
-        self.txt_path = str(self.save_dir / 'labels' / p.stem) + ('' if self.dataset.mode == 'image' else f'_{frame}')
+        self.txt_path = txt_path
         log_string += '%gx%g ' % im.shape[2:]  # print string
         self.annotator = self.get_annotator(im0)
 
@@ -65,8 +66,17 @@ class DetectionPredictor(BasePredictor):
             if self.args.save_txt:  # Write to file
                 line = (cls, *(d.xywhn.view(-1).tolist()), conf) \
                     if self.args.save_conf else (cls, *(d.xywhn.view(-1).tolist()))  # label format
-                with open(f'{self.txt_path}.txt', 'a') as f:
+                with open(f'{self.txt_path.parents[1]}/labels.txt', 'a') as f:
                     f.write(('%g ' * len(line)).rstrip() % line + '\n')
+            if self.save_mot:
+                box = d.xyxy.squeeze()
+                x = box[0]
+                y = box[1]
+                w = box[2] - box[0]
+                h = box[3] - box[1]
+                line = save_format.format(frame=img_id, id=0, x1=x, y1=y, w=w, h=h, conf=conf, cls=cls)
+                with open(f'{self.txt_path}.txt', 'a') as f:
+                    f.write(line)
             if self.args.save or self.args.save_crop or self.args.show:  # Add bbox to image
                 c = int(cls)  # integer class
                 label = None if self.args.hide_labels else (
